@@ -4,36 +4,7 @@ use tauri::{
     Manager, WindowEvent,
 };
 
-const CUSTOM_CSS: &str = "
-/* WhatsApp Lite Custom CSS */
-/* Hide Communities, Channels, Meta AI (Keep Chats, Status, Settings, Profile) */
-div[title='Communities'], span[title='Communities'], div[aria-label='Communities'], span[aria-label='Communities'],
-div[title='Channels'], span[title='Channels'], div[aria-label='Channels'], span[aria-label='Channels'],
-div[title='Meta AI'], span[title='Meta AI'], div[aria-label='Meta AI'], span[aria-label='Meta AI'] {
-    display: none !important;
-}
-
-/* Hide 'Get the app' banners if any */
-div[data-testid='intro-title'], div[data-testid='intro-text'] {
-    display: none !important;
-}
-
-/* Cool Scrollbar */
-::-webkit-scrollbar {
-    width: 6px !important;
-    height: 6px !important;
-}
-::-webkit-scrollbar-track {
-    background: transparent !important;
-}
-::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2) !important;
-    border-radius: 3px !important;
-}
-::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.3) !important;
-}
-";
+mod css;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -82,11 +53,14 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // CSS Injection
+            // CSS Injection & Right Click Disable
             if let Some(window) = app.get_webview_window("main") {
                 let script = format!(
                     "
                     const init = () => {{
+                        // Disable Right Click
+                        document.addEventListener('contextmenu', event => event.preventDefault());
+
                         const css = `{}`;
                         const style = document.createElement('style');
                         style.textContent = css;
@@ -134,7 +108,7 @@ pub fn run() {
                         init();
                     }}
                     ",
-                    CUSTOM_CSS
+                    css::CUSTOM_CSS
                 );
                 window.eval(&script)?;
             }
