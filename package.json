@@ -1,6 +1,6 @@
 {
   "name": "whatsapp-lite",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Lightweight WhatsApp desktop client for Windows. Built with Tauri & Rust - uses 10x less RAM than official app. Privacy-focused, open-source WhatsApp wrapper with system tray integration.",
   "author": "bittu-the-coder",
   "license": "MIT",
