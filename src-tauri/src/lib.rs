@@ -1,6 +1,5 @@
 use serde_json::{json, Value};
 use std::fs;
-use std::path::PathBuf;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{TrayIconBuilder, TrayIconEvent},
@@ -337,8 +336,6 @@ pub fn run() {
 
             // CSS and JavaScript Injection
             if let Some(window) = app.get_webview_window("main") {
-                let zoom_script = include_str!("../../src/zoom.js");
-                let sidebar_script = include_str!("../../src/sidebar.js");
                 let main_script = format!(
                     r#"
                     const init = () => {{
@@ -434,8 +431,6 @@ pub fn run() {
                 );
 
                 // Inject all scripts
-                window.eval(zoom_script)?;
-                window.eval(sidebar_script)?;
                 window.eval(&main_script)?;
             }
 
