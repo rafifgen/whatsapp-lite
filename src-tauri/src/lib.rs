@@ -1,3 +1,6 @@
+use serde_json::{json, Value};
+use std::fs;
+use std::path::PathBuf;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{TrayIconBuilder, TrayIconEvent},
@@ -13,6 +16,48 @@ use windows::{
 };
 
 // Tauri command to update badge count
+#[tauri::command]
+fn set_zoom(app: AppHandle, zoom: f64) -> std::result::Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        let script = format!(
+            "document.documentElement.style.zoom = '{}%';",
+            (zoom * 100.0).round() as u32
+        );
+        window.eval(&script).map_err(|e| e.to_string())
+    } else {
+        Err("Main window not found".to_string())
+    }
+}
+
+#[tauri::command]
+fn save_zoom(app: AppHandle, zoom: f64) -> std::result::Result<(), String> {
+    let app_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+
+    fs::create_dir_all(&app_dir).map_err(|e| e.to_string())?;
+
+    let settings_path = app_dir.join("settings.json");
+    let json_data = json!({ "zoomLevel": zoom });
+
+    fs::write(&settings_path, json_data.to_string()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn load_zoom(app: AppHandle) -> std::result::Result<Option<f64>, String> {
+    let app_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+
+    let settings_path = app_dir.join("settings.json");
+
+    if !settings_path.exists() {
+        return Ok(None);
+    }
+
+    let contents = fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
+
+    let data: Value = serde_json::from_str(&contents).map_err(|e| e.to_string())?;
+
+    Ok(data.get("zoomLevel").and_then(|v| v.as_f64()))
+}
+
 #[tauri::command]
 fn set_badge_count(app: AppHandle, count: u32) -> std::result::Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
@@ -217,10 +262,33 @@ fn create_badge_icon(count: u32) -> windows::core::Result<HICON> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        // .plugin(tauri_plugin_global_shortcut::Builder::new().build()) // Commented out until configured
-        .invoke_handler(tauri::generate_handler![set_badge_count])
+        .invoke_handler(tauri::generate_handler![
+            set_badge_count,
+            save_zoom,
+            load_zoom,
+            set_zoom
+        ])
         .setup(|app| {
-            let _handle = app.handle();
+            let main_window = app.get_webview_window("main").unwrap();
+            let handle = app.handle().clone();
+
+            // Load and apply zoom
+            if let Ok(app_dir) = handle.path().app_config_dir() {
+                let settings_path = app_dir.join("settings.json");
+                if settings_path.exists() {
+                    if let Ok(contents) = fs::read_to_string(&settings_path) {
+                        if let Ok(data) = serde_json::from_str::<Value>(&contents) {
+                            if let Some(zoom_f64) = data.get("zoomLevel").and_then(|v| v.as_f64()) {
+                                let script = format!(
+                                    "document.documentElement.style.zoom = '{}%';",
+                                    (zoom_f64 * 100.0).round() as u32
+                                );
+                                let _ = main_window.eval(&script);
+                            }
+                        }
+                    }
+                }
+            }
 
             // System Tray
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -267,19 +335,23 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // CSS Injection & Right Click Disable & Badge Monitoring
+            // CSS and JavaScript Injection
             if let Some(window) = app.get_webview_window("main") {
-                let script = format!(
-                    "
+                let zoom_script = include_str!("../../src/zoom.js");
+                let sidebar_script = include_str!("../../src/sidebar.js");
+                let main_script = format!(
+                    r#"
                     const init = () => {{
                         // Disable Right Click
                         document.addEventListener('contextmenu', event => event.preventDefault());
 
+                        // Inject Custom CSS
                         const css = `{}`;
                         const style = document.createElement('style');
                         style.textContent = css;
                         document.head.append(style);
 
+                        // Monitor for and hide unwanted banners
                         const observer = new MutationObserver((mutations) => {{
                             mutations.forEach((mutation) => {{
                                 mutation.addedNodes.forEach((node) => {{
@@ -302,7 +374,7 @@ pub fn run() {
                                                 t.includes('Download WhatsApp for Windows') ||
                                                 t.includes('Make calls, share your screen')
                                             )) {{
-                                                const container = b.closest('div[role=\\\"button\\\"]') || b.closest('div._aigv') || b.closest('div._aigw') || b;
+                                                const container = b.closest('div[role="button"]') || b.closest('div._aigv') || b.closest('div._aigw') || b;
                                                 if (container) container.style.display = 'none';
                                             }}
                                         }});
@@ -320,30 +392,20 @@ pub fn run() {
                         const updateBadge = async () => {{
                             try {{
                                 let totalUnread = 0;
-
-                                // Method 1: Check document title (WhatsApp Web updates title with count)
-                                const titleMatch = document.title.match(/\\((\\d+)\\)/);
+                                const titleMatch = document.title.match(/\((\d+)\)/);
                                 if (titleMatch) {{
                                     totalUnread = parseInt(titleMatch[1]);
                                 }} else {{
-                                    // Method 2: Only if title didn't work, count badge elements
-                                    const badges = document.querySelectorAll('span[data-icon=\\\"unread-count\\\"]');
+                                    const badges = document.querySelectorAll('span[data-icon="unread-count"]');
                                     badges.forEach(badge => {{
-                                        const text = badge.textContent || badge.innerText;
-                                        const count = parseInt(text.trim());
-                                        if (!isNaN(count) && count > 0) {{
-                                            totalUnread += count;
-                                        }}
+                                        const count = parseInt(badge.textContent || badge.innerText);
+                                        if (!isNaN(count)) totalUnread += count;
                                     }});
-
-                                    // If still no count, count unread chats (green dots without numbers)
                                     if (totalUnread === 0) {{
-                                        const unreadChats = document.querySelectorAll('div[role=\\\"listitem\\\"] span[data-icon=\\\"status-unread\\\"]');
-                                        totalUnread = unreadChats.length;
+                                        totalUnread = document.querySelectorAll('div[role="listitem"] span[data-icon="status-unread"]').length;
                                     }}
                                 }}
 
-                                // Update badge if count changed
                                 if (totalUnread !== lastCount) {{
                                     lastCount = totalUnread;
                                     if (window.__TAURI__) {{
@@ -355,17 +417,10 @@ pub fn run() {
                             }}
                         }};
 
-                        // Update badge every 2 seconds
                         setInterval(updateBadge, 2000);
-
-                        // Initial update after 5 seconds (wait for WhatsApp to load)
                         setTimeout(updateBadge, 5000);
-
-                        // Also update on visibility change
                         document.addEventListener('visibilitychange', () => {{
-                            if (!document.hidden) {{
-                                setTimeout(updateBadge, 1000);
-                            }}
+                            if (!document.hidden) setTimeout(updateBadge, 1000);
                         }});
                     }};
 
@@ -374,10 +429,14 @@ pub fn run() {
                     }} else {{
                         init();
                     }}
-                    ",
+                    "#,
                     css::CUSTOM_CSS
                 );
-                window.eval(&script)?;
+
+                // Inject all scripts
+                window.eval(zoom_script)?;
+                window.eval(sidebar_script)?;
+                window.eval(&main_script)?;
             }
 
             Ok(())
