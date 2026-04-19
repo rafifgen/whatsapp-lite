@@ -269,8 +269,8 @@ pub fn run() {
 
             // CSS Injection & Right Click Disable & Badge Monitoring
             if let Some(window) = app.get_webview_window("main") {
-                let script = format!(
-                    "
+                let main_script = format!(
+                    r#"
                     const init = () => {{
                         // Disable Right Click
                         document.addEventListener('contextmenu', event => event.preventDefault());
@@ -374,10 +374,12 @@ pub fn run() {
                     }} else {{
                         init();
                     }}
-                    ",
+                    "#,
                     css::CUSTOM_CSS
                 );
-                window.eval(&script)?;
+
+                // Inject all scripts
+                window.eval(&main_script)?;
             }
 
             Ok(())

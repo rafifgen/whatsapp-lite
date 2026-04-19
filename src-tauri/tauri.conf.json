@@ -15,7 +15,8 @@
 				"height": 800,
 				"url": "https://web.whatsapp.com",
 				"visible": true,
-				"zoomHotkeysEnabled": true
+				"zoomHotkeysEnabled": true,
+				"maximized": true
 			}
 		],
 		"security": {
