@@ -336,6 +336,7 @@ pub fn run() {
 
             // CSS and JavaScript Injection
             if let Some(window) = app.get_webview_window("main") {
+                let zoom_script = include_str!("../../src/zoom.js");
                 let main_script = format!(
                     r#"
                     const init = () => {{
@@ -431,6 +432,7 @@ pub fn run() {
                 );
 
                 // Inject all scripts
+                window.eval(zoom_script)?;
                 window.eval(&main_script)?;
             }
 
