@@ -27,4 +27,9 @@ div[data-testid='intro-title'], div[data-testid='intro-text'] {
 ::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.3) !important;
 }
+
+/* Make left sidebar narrower */
+div._aigw {
+    max-width: 30% !important;
+}
 "#;
